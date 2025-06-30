@@ -102,7 +102,47 @@ def _swift_prepare_messages_loss_weight_patch(self, messages):
             i += 1
 
 
+def _preprocess_function_call_loss_weight_patch(self, inputs) -> None:
+    agent_template = self.agent_template
+    agent_template.template_meta = self.template_meta  # for hermes
+    if inputs.tools:
+        if isinstance(inputs.tools, str):
+            inputs.tools = agent_template._parse_json(inputs.tools)
+            if not isinstance(inputs.tools, (list, tuple)):
+                inputs.tools = [inputs.tools]
+        elif isinstance(inputs.tools, (list, tuple)):
+            inputs.tools = [agent_template._parse_json(tool) for tool in inputs.tools]
+        else:
+            raise ValueError(f"inputs.tools: {inputs.tools}")
+        for i, tool in enumerate(inputs.tools):
+            inputs.tools[i] = agent_template.wrap_tool(tool)
+    i = 0
+    messages = inputs.messages
+    while i < len(messages):
+        if messages[i]["role"] == "tool_call":
+            i_start = i
+            try:
+                loss_weight = messages[i]["loss_weight"]
+            except Exception:
+                print("'loss weight' key is missing in tool call, using 'loss_scale' = 0.0")
+                loss_weight = 0.0
+            while i + 1 < len(messages) and messages[i + 1]["role"] == "tool_call":
+                i += 1
+            tool_content = self.agent_template._format_tool_calls(messages[i_start : i + 1])
+            messages[i_start : i + 1] = [
+                {
+                    "role": "assistant",
+                    "content": tool_content,
+                    "loss_weight": loss_weight,
+                }
+            ]
+            i = i_start + 1
+        else:
+            i += 1
+
+
 Template._swift_prepare_messages = _swift_prepare_messages_loss_weight_patch
+Template._preprocess_function_call = _preprocess_function_call_loss_weight_patch
 
 
 # finally define the loss scale function and register it:
