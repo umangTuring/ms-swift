@@ -162,13 +162,16 @@ class PerTurnLossScale(LossScale):
         n_round = len(messages) // 2
         for context, context_type in zip(context_list, context_types):
             is_last_round = i + 1 == n_round
-            loss_weight = 1.0
-            if context_type == ContextType.RESPONSE:
+            loss_weight = 0
+            if context_type == ContextType.SUFFIX:
+                loss_scale = 1
+            elif context_type == ContextType.RESPONSE:
                 assert context == messages[2 * i + 1]["content"]
                 try:
-                    loss_weight = messages[2 * i + 1]["loss_weight"]
-                except Exception as e:
-                    raise ValueError(f"loss_weight is not there in messages keys, \n {messages=} \n {e=}")
+                    loss_weight = float(messages[2 * i + 1]["loss_weight"])
+                except Exception as e:  # noqa
+                    # raise ValueError(f"loss_weight is not there in message keys, \n {message[2*i + 1]=} \n {e=}")
+                    loss_weight = 1
                 i += 1
             new_context, loss_scale = self.get_loss_scale(
                 context,
